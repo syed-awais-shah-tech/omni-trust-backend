@@ -1,5 +1,6 @@
 import express, { Application, Request, Response, NextFunction } from 'express';
 import { supabase } from './supabase';
+import { getPayPalAccessToken } from './paypal';
 
 const app: Application = express();
 
@@ -117,6 +118,27 @@ app.get('/api/transactions', async (_req: Request, res: Response) => {
     return res.status(500).json({
       success: false,
       error: err?.message || 'Internal server error'
+    });
+  }
+});
+
+// GET /api/paypal/auth/test - Test PayPal Sandbox OAuth authentication
+app.get('/api/paypal/auth/test', async (_req: Request, res: Response) => {
+  try {
+    const authResult = await getPayPalAccessToken();
+
+    return res.status(200).json({
+      success: true,
+      message: 'PayPal Sandbox authentication successful',
+      tokenType: authResult.tokenType,
+      expiresIn: authResult.expiresIn,
+      appId: authResult.appId,
+    });
+  } catch (err: any) {
+    return res.status(500).json({
+      success: false,
+      message: 'PayPal Sandbox authentication failed',
+      error: err?.message || 'Unknown authentication error',
     });
   }
 });
