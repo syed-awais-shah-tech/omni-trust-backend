@@ -24,6 +24,19 @@ export interface PayPalTokenResult {
   appId?: string;
 }
 
+export interface CreateOrderParams {
+  productName?: string;
+  quantity?: number;
+  amount: number | string;
+  currency?: string;
+}
+
+export interface PayPalOrderResult {
+  orderId: string;
+  status: string;
+  approvalUrl?: string;
+}
+
 /**
  * Requests an OAuth2 access token from PayPal Sandbox using the client credentials flow.
  * Note: Never expose the returned access token or client secret to the frontend.
@@ -64,6 +77,84 @@ export async function getPayPalAccessToken(): Promise<PayPalTokenResult> {
   };
 }
 
+/**
+ * Creates a PayPal order with CAPTURE intent using the PayPal Orders v2 REST API.
+ */
+export async function createPayPalOrder(params: CreateOrderParams): Promise<PayPalOrderResult> {
+  const { baseUrl } = paypalConfig;
+  const { token } = await getPayPalAccessToken();
+
+  const numAmount = parseFloat(String(params.amount));
+  if (isNaN(numAmount) || numAmount <= 0) {
+    throw new Error('Invalid order amount. Amount must be a positive number.');
+  }
+
+  const qty =
+    params.quantity && Number.isInteger(Number(params.quantity)) && Number(params.quantity) > 0
+      ? Number(params.quantity)
+      : 1;
+
+  const currency = params.currency ? params.currency.trim().toUpperCase() : 'USD';
+  const productName = params.productName ? params.productName.trim() : 'OmniTrust Test Product';
+
+  const unitAmountStr = numAmount.toFixed(2);
+  const totalAmountStr = (numAmount * qty).toFixed(2);
+
+  const orderPayload = {
+    intent: 'CAPTURE',
+    purchase_units: [
+      {
+        description: productName,
+        amount: {
+          currency_code: currency,
+          value: totalAmountStr,
+          breakdown: {
+            item_total: {
+              currency_code: currency,
+              value: totalAmountStr,
+            },
+          },
+        },
+        items: [
+          {
+            name: productName,
+            quantity: String(qty),
+            unit_amount: {
+              currency_code: currency,
+              value: unitAmountStr,
+            },
+          },
+        ],
+      },
+    ],
+  };
+
+  const response = await fetch(`${baseUrl}/v2/checkout/orders`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`,
+    },
+    body: JSON.stringify(orderPayload),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => null);
+    const errorDetails = errorData?.details?.[0]?.description || errorData?.message || response.statusText;
+    throw new Error(`PayPal Order creation failed (${response.status}): ${errorDetails}`);
+  }
+
+  const orderData = (await response.json()) as any;
+  const approvalUrl = orderData.links?.find((l: any) => l.rel === 'approve')?.href;
+
+  return {
+    orderId: orderData.id,
+    status: orderData.status,
+    approvalUrl,
+  };
+}
+
 export const paypalService = {
   getAccessToken: getPayPalAccessToken,
+  createOrder: createPayPalOrder,
 };

@@ -1,6 +1,6 @@
 import express, { Application, Request, Response, NextFunction } from 'express';
 import { supabase } from './supabase';
-import { getPayPalAccessToken } from './paypal';
+import { getPayPalAccessToken, createPayPalOrder } from './paypal';
 
 const app: Application = express();
 
@@ -139,6 +139,68 @@ app.get('/api/paypal/auth/test', async (_req: Request, res: Response) => {
       success: false,
       message: 'PayPal Sandbox authentication failed',
       error: err?.message || 'Unknown authentication error',
+    });
+  }
+});
+
+// POST /api/paypal/orders - Create a PayPal Sandbox order
+app.post('/api/paypal/orders', async (req: Request, res: Response) => {
+  try {
+    const { productName, product_name, quantity, amount, currency } = req.body || {};
+
+    // Basic validation
+    if (amount === undefined || amount === null || amount === '') {
+      return res.status(400).json({
+        success: false,
+        error: 'Validation error: amount is required',
+      });
+    }
+
+    const numAmount = parseFloat(String(amount));
+    if (isNaN(numAmount) || numAmount <= 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'Validation error: amount must be a positive number',
+      });
+    }
+
+    const qty = quantity !== undefined ? parseInt(String(quantity), 10) : 1;
+    if (isNaN(qty) || qty <= 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'Validation error: quantity must be a positive integer',
+      });
+    }
+
+    const curr = currency ? String(currency).trim().toUpperCase() : 'USD';
+    if (curr.length !== 3) {
+      return res.status(400).json({
+        success: false,
+        error: 'Validation error: currency must be a valid 3-letter currency code (e.g. USD)',
+      });
+    }
+
+    const name = productName || product_name || 'OmniTrust Test Product';
+
+    const order = await createPayPalOrder({
+      productName: name,
+      quantity: qty,
+      amount: numAmount,
+      currency: curr,
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: 'PayPal order created successfully',
+      orderId: order.orderId,
+      status: order.status,
+      approvalUrl: order.approvalUrl,
+    });
+  } catch (err: any) {
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to create PayPal order',
+      error: err?.message || 'Unknown error occurred while creating order',
     });
   }
 });
