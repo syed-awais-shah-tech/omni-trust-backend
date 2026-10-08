@@ -154,7 +154,50 @@ export async function createPayPalOrder(params: CreateOrderParams): Promise<PayP
   };
 }
 
+export interface PayPalCaptureResult {
+  orderId: string;
+  status: string;
+  captureId?: string;
+}
+
+/**
+ * Captures an approved PayPal order using the PayPal Orders v2 REST API.
+ */
+export async function capturePayPalOrder(orderId: string): Promise<PayPalCaptureResult> {
+  const { baseUrl } = paypalConfig;
+  const { token } = await getPayPalAccessToken();
+
+  if (!orderId) {
+    throw new Error('Order ID is required to capture a PayPal order.');
+  }
+
+  const response = await fetch(`${baseUrl}/v2/checkout/orders/${encodeURIComponent(orderId)}/capture`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`,
+    },
+    body: JSON.stringify({}),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => null);
+    const errorDetails = errorData?.details?.[0]?.description || errorData?.message || response.statusText;
+    throw new Error(`PayPal Order capture failed (${response.status}): ${errorDetails}`);
+  }
+
+  const captureData = (await response.json()) as any;
+  const captureId = captureData.purchase_units?.[0]?.payments?.captures?.[0]?.id;
+
+  return {
+    orderId: captureData.id || orderId,
+    status: captureData.status,
+    captureId,
+  };
+}
+
 export const paypalService = {
   getAccessToken: getPayPalAccessToken,
   createOrder: createPayPalOrder,
+  captureOrder: capturePayPalOrder,
 };

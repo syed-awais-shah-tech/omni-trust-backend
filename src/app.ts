@@ -1,16 +1,19 @@
 import express, { Application, Request, Response, NextFunction } from 'express';
 import { supabase } from './supabase';
-import { getPayPalAccessToken, createPayPalOrder } from './paypal';
+import { getPayPalAccessToken, createPayPalOrder, capturePayPalOrder } from './paypal';
 
 const app: Application = express();
 
 app.use(express.json());
 
 // Enable CORS for frontend integration
-app.use((_req: Request, res: Response, next: NextFunction) => {
+app.use((req: Request, res: Response, next: NextFunction) => {
   res.header('Access-Control-Allow-Origin', '*');
-  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(204);
+  }
   next();
 });
 
@@ -201,6 +204,37 @@ app.post('/api/paypal/orders', async (req: Request, res: Response) => {
       success: false,
       message: 'Failed to create PayPal order',
       error: err?.message || 'Unknown error occurred while creating order',
+    });
+  }
+});
+
+// POST /api/paypal/orders/:orderId/capture - Capture an approved PayPal Sandbox order
+app.post('/api/paypal/orders/:orderId/capture', async (req: Request, res: Response) => {
+  try {
+    const rawOrderId = req.params.orderId;
+    const orderId = Array.isArray(rawOrderId) ? rawOrderId[0] : rawOrderId;
+
+    if (!orderId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Validation error: orderId is required',
+      });
+    }
+
+    const capture = await capturePayPalOrder(orderId);
+
+    return res.status(200).json({
+      success: true,
+      message: 'PayPal order captured successfully',
+      orderId: capture.orderId,
+      status: capture.status,
+      captureId: capture.captureId,
+    });
+  } catch (err: any) {
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to capture PayPal order',
+      error: err?.message || 'Unknown error occurred while capturing order',
     });
   }
 });
