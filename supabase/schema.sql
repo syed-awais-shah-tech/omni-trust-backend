@@ -15,6 +15,10 @@ CREATE TABLE IF NOT EXISTS public.transactions (
     status TEXT NOT NULL DEFAULT 'pending',
     amount NUMERIC(12, 2) NOT NULL,
     currency VARCHAR(3) NOT NULL DEFAULT 'USD',
+    product TEXT,
+    quantity INTEGER DEFAULT 1,
+    paypal_order_id TEXT,
+    paypal_capture_id TEXT,
     description TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
 );
@@ -23,19 +27,21 @@ CREATE TABLE IF NOT EXISTS public.transactions (
 CREATE INDEX IF NOT EXISTS idx_policies_created_at ON public.policies(created_at);
 CREATE INDEX IF NOT EXISTS idx_transactions_status ON public.transactions(status);
 CREATE INDEX IF NOT EXISTS idx_transactions_created_at ON public.transactions(created_at);
+CREATE INDEX IF NOT EXISTS idx_transactions_paypal_order_id ON public.transactions(paypal_order_id);
+CREATE INDEX IF NOT EXISTS idx_transactions_paypal_capture_id ON public.transactions(paypal_capture_id);
 
 -- Grant table privileges to roles
 GRANT ALL ON TABLE public.policies TO postgres, service_role;
 GRANT ALL ON TABLE public.transactions TO postgres, service_role;
 
-GRANT SELECT ON TABLE public.policies TO anon, authenticated;
-GRANT SELECT ON TABLE public.transactions TO anon, authenticated;
+GRANT SELECT, INSERT ON TABLE public.policies TO anon, authenticated;
+GRANT SELECT, INSERT ON TABLE public.transactions TO anon, authenticated;
 
 -- Row Level Security (RLS) setup
 ALTER TABLE public.policies ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.transactions ENABLE ROW LEVEL SECURITY;
 
--- Allow read access for authenticated & anon clients
+-- Allow read and insert access for authenticated & anon clients
 DO $$
 BEGIN
     IF NOT EXISTS (
@@ -48,5 +54,11 @@ BEGIN
         SELECT 1 FROM pg_policies WHERE tablename = 'transactions' AND policyname = 'Allow public read access for transactions'
     ) THEN
         CREATE POLICY "Allow public read access for transactions" ON public.transactions FOR SELECT USING (true);
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_policies WHERE tablename = 'transactions' AND policyname = 'Allow insert access for transactions'
+    ) THEN
+        CREATE POLICY "Allow insert access for transactions" ON public.transactions FOR INSERT WITH CHECK (true);
     END IF;
 END $$;

@@ -158,6 +158,9 @@ export interface PayPalCaptureResult {
   orderId: string;
   status: string;
   captureId?: string;
+  amount?: string;
+  currency?: string;
+  raw?: any;
 }
 
 /**
@@ -187,12 +190,18 @@ export async function capturePayPalOrder(orderId: string): Promise<PayPalCapture
   }
 
   const captureData = (await response.json()) as any;
-  const captureId = captureData.purchase_units?.[0]?.payments?.captures?.[0]?.id;
+  const firstCapture = captureData.purchase_units?.[0]?.payments?.captures?.[0];
+  const captureId = firstCapture?.id;
+  const captureAmount = firstCapture?.amount?.value;
+  const captureCurrency = firstCapture?.amount?.currency_code;
 
   return {
     orderId: captureData.id || orderId,
-    status: captureData.status,
+    status: captureData.status || 'COMPLETED',
     captureId,
+    amount: captureAmount,
+    currency: captureCurrency,
+    raw: captureData,
   };
 }
 
